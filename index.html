@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OKR 目標・主要結果トラッカー</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .progress-ring { transition: stroke-dashoffset 0.6s ease; }
+  input[type=range] { accent-color: #4f46e5; }
+</style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+<div class="max-w-5xl mx-auto px-4 py-8">
+  <h1 class="text-3xl font-bold text-center text-indigo-700 mb-2">OKR トラッカー</h1>
+  <p class="text-center text-gray-500 mb-8">Objectives & Key Results — 目標と主要結果で進捗を管理</p>
+
+  <!-- 追加フォーム -->
+  <div class="bg-white rounded-xl shadow p-6 mb-8">
+    <h2 class="text-lg font-semibold text-gray-700 mb-4">新しいObjectiveを追加</h2>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">Objective（目標）</label>
+        <input type="text" id="new-obj" placeholder="例: 四半期売上 20% 向上" maxlength="120"
+          class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">四半期</label>
+        <input type="text" id="new-quarter" placeholder="例: 2026 Q4" maxlength="20"
+          class="w-48 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+      </div>
+      <div id="kr-inputs" class="space-y-2">
+        <div class="flex gap-2 items-center">
+          <span class="text-xs text-indigo-500 font-bold w-6">KR1</span>
+          <input type="text" placeholder="Key Result 1 の説明" maxlength="120"
+            class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 kr-desc">
+          <input type="number" placeholder="目標値" min="0"
+            class="w-28 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 kr-target">
+          <input type="text" placeholder="単位" maxlength="10"
+            class="w-16 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 kr-unit">
+        </div>
+      </div>
+      <button onclick="addKRInput()" class="text-sm text-indigo-600 hover:underline">＋ Key Result を追加</button>
+      <div class="flex gap-3 mt-2">
+        <button onclick="addObjective()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg text-sm font-semibold transition">追加</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- タブ -->
+  <div class="flex gap-2 mb-6">
+    <button onclick="setTab('active')" id="tab-active" class="px-5 py-2 bg-indigo-600 text-white rounded-full text-sm font-semibold">進行中</button>
+    <button onclick="setTab('archived')" id="tab-archived" class="px-5 py-2 bg-white border text-gray-600 rounded-full text-sm font-semibold">アーカイブ済み</button>
+  </div>
+
+  <div id="okr-list" class="space-y-6"></div>
+</div>
+
+<script>
+let objectives = [];
+let currentTab = 'active';
+
+function init() {
+  const saved = localStorage.getItem('okr-data');
+  if (saved) objectives = JSON.parse(saved);
+  render();
+}
+
+function addKRInput() {
+  const container = document.getElementById('kr-inputs');
+  const count = container.querySelectorAll('.kr-desc').length + 1;
+  const row = document.createElement('div');
+  row.className = 'flex gap-2 items-center';
+  row.innerHTML = `
+    <span class="text-xs text-indigo-500 font-bold w-6">KR${count}</span>
+    <input type="text" placeholder="Key Result ${count} の説明" maxlength="120"
+      class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 kr-desc">
+    <input type="number" placeholder="目標値" min="0"
+      class="w-28 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 kr-target">
+    <input type="text" placeholder="単位" maxlength="10"
+      class="w-16 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 kr-unit">
+  `;
+  container.appendChild(row);
+}
+
+function addObjective() {
+  const obj = document.getElementById('new-obj').value.trim();
+  const quarter = document.getElementById('new-quarter').value.trim();
+  if (!obj) { alert('Objectiveを入力してください'); return; }
+
+  const descs = [...document.querySelectorAll('.kr-desc')].map(el => el.value.trim());
+  const targets = [...document.querySelectorAll('.kr-target')].map(el => parseFloat(el.value) || 0);
+  const units = [...document.querySelectorAll('.kr-unit')].map(el => el.value.trim() || '');
+
+  const keyResults = descs
+    .map((desc, i) => ({ desc, target: targets[i], unit: units[i], current: 0 }))
+    .filter(kr => kr.desc);
+
+  if (keyResults.length === 0) { alert('Key Resultを1つ以上追加してください'); return; }
+
+  objectives.push({
+    id: Date.now(),
+    objective: obj,
+    quarter: quarter || '未設定',
+    keyResults,
+    archived: false,
+    createdAt: new Date().toISOString().split('T')[0]
+  });
+  save();
+  render();
+  document.getElementById('new-obj').value = '';
+  document.getElementById('new-quarter').value = '';
+  document.getElementById('kr-inputs').innerHTML = `
+    <div class="flex gap-2 items-center">
+      <span class="text-xs text-indigo-500 font-bold w-6">KR1</span>
+      <input type="text" placeholder="Key Result 1 の説明" maxlength="120"
+        class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 kr-desc">
+      <input type="number" placeholder="目標値" min="0"
+        class="w-28 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 kr-target">
+      <input type="text" placeholder="単位" maxlength="10"
+        class="w-16 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 kr-unit">
+    </div>`;
+}
+
+function updateKR(objId, krIndex, value) {
+  const obj = objectives.find(o => o.id === objId);
+  if (obj) {
+    obj.keyResults[krIndex].current = parseFloat(value) || 0;
+    save();
+    render();
+  }
+}
+
+function archiveObj(id) {
+  const obj = objectives.find(o => o.id === id);
+  if (obj) { obj.archived = true; save(); render(); }
+}
+
+function unarchiveObj(id) {
+  const obj = objectives.find(o => o.id === id);
+  if (obj) { obj.archived = false; save(); render(); }
+}
+
+function deleteObj(id) {
+  if (!confirm('このOKRを削除しますか？')) return;
+  objectives = objectives.filter(o => o.id !== id);
+  save();
+  render();
+}
+
+function calcScore(keyResults) {
+  if (keyResults.length === 0) return 0;
+  const total = keyResults.reduce((sum, kr) => {
+    return sum + (kr.target > 0 ? Math.min(kr.current / kr.target, 1) : 0);
+  }, 0);
+  return total / keyResults.length;
+}
+
+function setTab(tab) {
+  currentTab = tab;
+  document.getElementById('tab-active').className = tab === 'active'
+    ? 'px-5 py-2 bg-indigo-600 text-white rounded-full text-sm font-semibold'
+    : 'px-5 py-2 bg-white border text-gray-600 rounded-full text-sm font-semibold';
+  document.getElementById('tab-archived').className = tab === 'archived'
+    ? 'px-5 py-2 bg-indigo-600 text-white rounded-full text-sm font-semibold'
+    : 'px-5 py-2 bg-white border text-gray-600 rounded-full text-sm font-semibold';
+  render();
+}
+
+function render() {
+  const list = document.getElementById('okr-list');
+  list.innerHTML = '';
+  const filtered = objectives.filter(o => o.archived === (currentTab === 'archived'));
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="text-center text-gray-400 py-12">${currentTab === 'active' ? '進行中のOKRがありません' : 'アーカイブ済みのOKRがありません'}</div>`;
+    return;
+  }
+
+  filtered.forEach(obj => {
+    const score = calcScore(obj.keyResults);
+    const pct = Math.round(score * 100);
+    const color = pct >= 70 ? 'text-green-600' : pct >= 40 ? 'text-yellow-600' : 'text-red-500';
+    const bgColor = pct >= 70 ? 'bg-green-50' : pct >= 40 ? 'bg-yellow-50' : 'bg-red-50';
+
+    const card = document.createElement('div');
+    card.className = `bg-white rounded-xl shadow p-6 border-l-4 ${pct >= 70 ? 'border-green-400' : pct >= 40 ? 'border-yellow-400' : 'border-red-400'}`;
+    card.innerHTML = `
+      <div class="flex justify-between items-start mb-4">
+        <div>
+          <span class="text-xs font-semibold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded mr-2">${obj.quarter}</span>
+          <span class="text-xs text-gray-400">${obj.createdAt}</span>
+          <h3 class="text-xl font-bold text-gray-800 mt-1">${escapeHtml(obj.objective)}</h3>
+        </div>
+        <div class="text-center ${bgColor} rounded-xl px-4 py-2 shrink-0 ml-4">
+          <div class="text-2xl font-bold ${color}">${pct}%</div>
+          <div class="text-xs text-gray-500">スコア</div>
+        </div>
+      </div>
+      <div class="space-y-3">
+        ${obj.keyResults.map((kr, i) => {
+          const krPct = kr.target > 0 ? Math.min(Math.round(kr.current / kr.target * 100), 100) : 0;
+          return `
+            <div class="bg-gray-50 rounded-lg p-3">
+              <div class="flex justify-between items-center mb-1">
+                <span class="text-xs font-bold text-indigo-500">KR${i+1}</span>
+                <span class="text-xs text-gray-500">${kr.current} / ${kr.target} ${kr.unit}</span>
+              </div>
+              <p class="text-sm text-gray-700 mb-2">${escapeHtml(kr.desc)}</p>
+              <div class="flex items-center gap-3">
+                <input type="range" min="0" max="${kr.target || 100}" step="1" value="${kr.current}"
+                  class="flex-1" aria-label="KR${i+1}進捗"
+                  oninput="updateKR(${obj.id},${i},this.value)">
+                <span class="text-sm font-semibold w-10 text-right ${krPct >= 70 ? 'text-green-600' : krPct >= 40 ? 'text-yellow-600' : 'text-red-500'}">${krPct}%</span>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div class="flex gap-2 mt-4 justify-end">
+        ${obj.archived
+          ? `<button onclick="unarchiveObj(${obj.id})" class="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded-lg hover:bg-blue-200 transition">戻す</button>`
+          : `<button onclick="archiveObj(${obj.id})" class="text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded-lg hover:bg-gray-200 transition">アーカイブ</button>`
+        }
+        <button onclick="deleteObj(${obj.id})" class="text-sm bg-red-100 text-red-600 px-3 py-1 rounded-lg hover:bg-red-200 transition">削除</button>
+      </div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function escapeHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function save() {
+  localStorage.setItem('okr-data', JSON.stringify(objectives));
+}
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+Objective（目標）とKey Results（主要結果・数値目標）を登録し進捗率を入力する四半期OKRカード表示・アーカイブ対応トラッカー。LocalStorage永続化。
